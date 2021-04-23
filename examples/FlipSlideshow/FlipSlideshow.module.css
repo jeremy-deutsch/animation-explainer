@@ -1,0 +1,17 @@
+.imagesWrapper {
+  position: relative;
+  height: 200px;
+  width: 200px;
+}
+
+.img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transition: transform 0.3s, opacity 0.3s;
+}
+
+.img[aria-hidden="true"] {
+  transform: translateX(100px);
+  opacity: 0;
+}

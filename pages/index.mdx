@@ -1,0 +1,305 @@
+import LoadingSpinner from "../examples/LoadingSpinner";
+import FlipSwitch from "../examples/FlipSwitch";
+import Collapsible from "../examples/Collapsible";
+import Todos from "../examples/Todos";
+import FlipSlideshow from "../examples/FlipSlideshow";
+import FollowMouse from "../examples/FollowMouse";
+
+# Fundamentals of Animations (as I understand them)
+
+<!--
+- Static animations (somewhat common)
+  - This is when you have a style that moves (e.g. a loading spinner)
+  - I don't really need to talk about this
+- Transitions (aka "discrete animations") (very common)
+  - This is when your UI has a discrete number of states, and you want to animate the changes from one state to another
+  - Types of transitions: same-element, shared-element, in/out
+  - Transition implementations: CSS transitions and FLIP animations for same-element or shared-element transitions, CSS transitions and _sometimes_ CSS entry animations for in/out transitions
+- Continuous animations (somewhat common)
+  - This is when your UI has a large or unbounded number of states
+  - E.g. gesture or scroll animations
+  - Currently this is always implemented using JS, since CSS currently has no built-in way to read scalar interaction states
+- Animation sagas (rare)
+  - Sometimes an animation has its own set of states that don't necessarily correspond to the states of your UI. This is where the actor model comes in handy (this stuff gets pretty complex).
+
+Structure:
+
+- Technical fundamentals: animation APIs in React-land
+  - CSS transitions
+  - CSS animations
+  - FLIP
+  - RAF (but not setState)
+  - AnimatedValue libraries
+- Types of animations
+  - Static
+  - Discrete (transitions)
+    - Same-element
+    - Shared-element
+    - In/out
+  - Continuous
+  - Saga
+-->
+
+This doc tries to summarize how I think about doing animations in React. It's mostly just what the "fundamental" kinds of animations are from my perspective, and what the best ways are to do those kinds of animations in a React web app.
+
+## Technical fundamentals: the APIs
+
+There are only really a few reasonable ways to have stuff on a React site move around. You probably know a few or all of them. I'll be referencing the below techniques in this doc:
+
+### Built-in APIs
+
+Some core animation APIs are built into browsers - these are all essential knowledge for doing animations.
+
+- [CSS transitions](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Transitions/Using_CSS_transitions)
+- [CSS keyframe animations](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Animations/Using_CSS_animations)
+- [Web Animations](https://developer.mozilla.org/en-US/docs/Web/API/Web_Animations_API/Using_the_Web_Animations_API) ([browser compatibility](https://caniuse.com/web-animation))
+
+Make sure to understand the [performance implications](https://developer.mozilla.org/en-US/docs/Web/Performance/Animation_performance_and_frame_rate#css_property_cost) of animating non-layout CSS properties (such as `transform` or `opacity`) vs. layout properties (such as `margin` or `height`).
+
+### Animating using JS and React
+
+In addition to using the browser-native techniques above, you always just have the option of using JS code to set one or more elements' styles 60 times per second (most likely scheduling those changes using [`requestAnimationFrame`](https://developer.mozilla.org/en-US/docs/Web/API/window/requestAnimationFrame)). There are a few vitally important things to understand about doing this:
+
+- This will almost always have worse runtime performance than the above browser-native techniques, since in those cases, only native browser code is running (C++ or Rust), and the browser can apply certain optimizations (such as GPU acceleration) since it knows it's doing an animation.
+- Using React's `useState`/`setState` API to change styles many times a second is just not viable from a performance standpoint, since React will often end up re-running much more component code than the user's CPU can afford (we only have 16ms per animation frame at 60fps). Instead, styles need to be set directly on references to DOM nodes.
+- If driving an animation with JS is the only option, and doing DOM manipulation with `requestAnimationFrame` seems too hard to maintain, your best option is to use an "Animated Value" API, such as [`framer-motion`](https://www.framer.com/motion/) or [`react-spring`](https://react-spring.io/).
+
+#### "Animated Value" APIs
+
+"Animated Value" APIs have existed for a long time, and in my opinion, are the best way to drive animations from JS when using React. The core premise of any "Animated Value" API is that you can create values or objects that bypass React's re-rendering functionality, and instead reactively change styles on DOM nodes when they're changed. For example, `framer-motion` uses [`MotionValue`s](https://www.framer.com/api/motion/motionvalue/).
+
+### FLIP
+
+Last but not least, the FLIP animation technique is invaluable for moving elements between different locations without knowing exactly where those locations will be in advance. The fundamentals of the FLIP technique are detailed [here](https://css-tricks.com/animating-layouts-with-the-flip-technique/), and I'll show some examples later for using it with React.
+
+## Miscellaneous UX best practices
+
+- Whether or not you're animating them, pay attention to how elements leaving or entering the DOM cause the page layout to shift! This requires testing out your components on an actual page, not just in Storybook.
+- [`prefers-reduced-motion`](https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion) is an important media flag that all your animations should respect (including animations from JS), to the point of often just not animating if that flag is on. Your UI should still be fully functional with the flag turned on. Note, by the way, that `framer-motion` has a [`useReducedMotion`](https://www.framer.com/api/motion/utilities/#usereducedmotion) React hook to help avoid triggering motion-sickness-inducing animations from JS.
+- Having cool animations often creates incentives to write tricksy HTML and CSS, which tends to create accessibility issues, so watch out for those. For example, if an element is visually hidden using `opacity` or `backface-visibility`, make sure to add `aria-hidden` or `visibility: hidden`!
+
+## Types of Animations
+
+### Static
+
+What I call "static" animations are elements that move around without representing any change in the UI state. These are generally animations that could be replaced with an image or GIF. I'm not going to discuss them in much detail here, but you can generally use looping CSS keyframe animations for these. Designers will often also be able to export web-compatible static animations from various programs.
+
+**Example**
+
+<LoadingSpinner />
+
+```css
+.spinner {
+  height: 40px;
+  width: 40px;
+  border-radius: 50%;
+  border: 6px solid;
+  border-color: black transparent black transparent;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+```
+
+### Discrete
+
+A discrete animation, usually referred to as a "transition" animation, is an animated transition between two predefined UI states. This is the most common type of animation you see on websites, since making different UI states feel connected tends to make UIs feel more natural.
+
+#### Same-element
+
+A same-element transition is conceptually straightforward: an element has certain styles in state A, and certain other styles in state B. We then interpolate the styles between those of state A and B.
+
+A CSS transition is the most common way to achieve a same-element transition, and is almost always the best way to go when the start and end of the animation can be defined by non-layout CSS properties (e.g. `transform`).
+
+**Example**
+
+<FlipSwitch />
+
+```css
+.switch {
+  position: relative;
+  cursor: pointer;
+  width: 120px;
+  height: 50px;
+  border-radius: 25px;
+  border: 2px solid black;
+}
+
+.switch::after {
+  content: "";
+  height: 40px;
+  width: 40px;
+  border-radius: 20px;
+  background-color: black;
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  /* this line does the animation! */
+  transition: transform 0.2s;
+}
+
+.switch[aria-checked="true"]::after {
+  transform: translateX(70px);
+}
+```
+
+Sometimes, however, the starting and ending points of an animation aren't known in advance (for example, when an element needs to move after it has siblings added or removed). In that case, the FLIP technique is the most efficient way to move elements around. Animation libraries tend to have helpers for this case too (e.g. [the `layout` prop in `framer-motion`](https://www.framer.com/api/motion/animation/#layout-animations)).
+
+**Example**
+
+<Collapsible title="Open/Close">
+  Some text goes here
+  <br />
+  And some more down here
+  <br />
+  How tall is this text? Who knows?
+</Collapsible>
+
+```jsx
+const childrenRef = useRef(null);
+const prevHeightRef = useRef(null);
+useLayoutEffect(() => {
+  if (!childrenRef.current) return;
+
+  // if any animations are still running it'll mess up our measurement
+  childrenRef.current.getAnimations().forEach((a) => a.cancel());
+
+  // compare the old and new height, then animate between them
+  const childrenHeight = childrenRef.current.offsetHeight;
+  const prevHeight = prevHeightRef.current;
+  if (prevHeight !== null && prevHeight !== childrenHeight) {
+    childrenRef.current.animate(
+      [{ height: `${prevHeight}px` }, { height: `${childrenHeight}px` }],
+      { duration: 300, fill: "none", easing: "ease-in-out" }
+    );
+  }
+
+  prevHeightRef.current = childrenHeight;
+}, [expanded]);
+```
+
+#### Shared-element
+
+Sometimes, two different HTML elements conceptually represent the same UI element across multiple UI states. When we want to animate between those two elements to create the illusion that they're one element, we're performing a shared-element transition. These can be pretty difficult to pull off, but tend to be very impressive.
+
+Technically, the best way to pull off a shared-element transition in hand-written code is a FLIP animation, but the most practical way to handle them is usually a library helper like [`<AnimateSharedLayout>`](https://www.framer.com/api/motion/animate-shared-layout/) in `framer-motion`.
+
+<Todos />
+
+```tsx
+function TodoItem(props: {
+  label: string;
+  done: boolean;
+  lastRect: { top: number; left: number } | null;
+  toggleTodo: (todo: Todo) => void;
+}) {
+  const divRef = useRef<HTMLDivElement>(null);
+  const lastRectRef = useRef(props.lastRect);
+  useLayoutEffect(() => {
+    if (!divRef.current) return;
+    const left = divRef.current.offsetLeft;
+    const top = divRef.current.offsetTop;
+    const lastRect = lastRectRef.current;
+    if (lastRect && (lastRect.left !== left || lastRect.top !== top)) {
+      const xOffset = lastRect.left - left;
+      const yOffset = lastRect.top - top;
+      divRef.current.animate(
+        [
+          { transform: `translate(${xOffset}px, ${yOffset}px)` },
+          { transform: "translate(0, 0)" },
+        ],
+        { duration: 200 }
+      );
+    }
+
+    lastRectRef.current = { left, top };
+  });
+
+  return (
+    <div className={styles.todoItem} ref={divRef}>
+      <input
+        type="checkbox"
+        id={props.label}
+        onClick={() => {
+          if (!divRef.current) return;
+          const top = divRef.current.offsetTop;
+          const left = divRef.current.offsetLeft;
+          props.toggleTodo({
+            label: props.label,
+            lastRect: { top, left },
+            done: !props.done,
+          });
+        }}
+        checked={props.done}
+      />
+      <label htmlFor={props.label}>{props.label}</label>
+    </div>
+  );
+}
+```
+
+#### In/Out
+
+When an element appears in one UI state and not in the next, or the reverse (not in the UI, then in UI for the next state), we want to animate the transition between the versions of the UI with and without that element. There are many ways to accomplish this with varying degrees of difficulty:
+
+- If we don't mind keeping an element in the DOM and just hiding it (usually with `opacity: 0`), CSS transitions are the simplest and most performant way to execute in/out transitions.
+- If an element only animates in and never out, then a CSS keyframe animation should do the trick.
+- If we want to animate an element out when removing it from the DOM... well, React is pretty bad at this. You generally have one of two options here: either use `Element.animate()` with an `onComplete` callback to set React state, or (much more easily) use a library API like [`AnimatePresence`](https://www.framer.com/api/motion/animate-presence/) in `framer-motion`.
+- If you want an in/out transition animation where elements from the first state being removed from the DOM are visible at the same time as newly created elements from the second state, then something like [`AnimatePresence`](https://www.framer.com/api/motion/animate-presence/) is your best bet. I have no idea how you would hard-code this.
+
+**Example (using CSS transitions)**
+
+<FlipSlideshow />
+
+```css
+.imagesWrapper {
+  position: relative;
+  height: 200px;
+  width: 200px;
+}
+
+.img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transition: transform 0.3s, opacity 0.3s;
+}
+
+.img[aria-hidden="true"] {
+  transform: translateX(100px);
+  opacity: 0;
+}
+```
+
+### Continuous
+
+UIs don't just transition between discrete states - sometimes, UI states are fluid and constantly changing based on some input. For example, a UI might want to represent the current state of a swipe gesture at any point in that gesture, or reflect the mouse or scroll position in some way. These types of representations generally get considered a type of animation, so I call them "continuous" animations.
+
+Continuous animations are most common (and very cool) in the world of mobile apps, where swipe and scroll gestures are everywhere. They're a little less frequent on the web, since their effect is dampered a bit. Animating based on mouse position doesn't tend to make a lot of sense in general since the mouse is pretty conceptually disconnected from the webpage, and scroll animations face a number of UI issues, such as mouse wheels moving in jumps rather than smoothly, and mobile browsers' collapsing top bar "eating" scroll animations. These issues tend not to deter developers from trying to build unneccessary scroll animations anyway, since neither of them come up when you're testing in your web browser with a MacBook touch pad.
+
+The other real killer of continuous animations (right now) is performance. Although some proposals are in the air, there's currently no way to read scalar UI state (such as scroll position) directly from CSS code. This means that the only way to run continuous animations is to set CSS properties from JS 60 times a second.
+
+For that reason, your best bet for continuous animations is to just use a library like `framer-motion`. If the animation is simple enough and you want to save bundle size, you can also just call `requestAnimationFrame` over and over from JS. But libraries like `framer-motion` are your best bet if you can afford to use them. `framer-motion`, for example, has the `useViewportScroll` utility for driving scroll animations with a "`MotionValue`".
+
+Also, any gesture or drag-based interactions fall under the umbrella of "continuous animations", but if they're important to your UI and you don't have any fancy animations you want to add you should just find a library that has nice interactions and accessibility and use that. For example, if you need to drag and drop items in lists, don't use the gesture helpers in `framer-motion` - use [`react-beautiful-dnd`](https://github.com/atlassian/react-beautiful-dnd) or something instead.
+
+**Example (this just sets styles, use a library instead)**
+
+<FollowMouse />
+
+### Saga
+
+The most difficult kind of animation is one that requires its own internal state, since there aren't any animation libraries built for this. These kinds of animations are pretty rare, and it's hard to explain when they come up. They're most commonly complicated loading animations.
+
+Here's a contrived example: say the loading animation on your website is an animated Pac-Man moving around a maze. This could just be a static animation (the type above that's basically a GIF). But what if the design calls for Pac-Man to make his way out of the maze when the loading is done? In the simplest scenario, you then need to wait until Pac-Man finishes a loop, then switch to another pre-recorded animation of him leaving the maze, and then switch your UI to be in the "done loading" state. How do you execute this animation? At the very minimum, you need some kind of queueing system to handle the state change from "loading" to "done loading" without immediately jumping to the "leaving the maze" animation.
+
+These animations with internal state and/or queuing are what I call "saga animations", based on the notion of a "saga" as a long-running cancelable process with a message queue. You can hand-write them, but I'd recommend using a library like `xstate` or `redux-saga` to get your feet wet with the concepts before you start writing them from scratch. (Or, if reading suits you better, read up on state machines and the "actor model". Maybe watch some talks by David Khourshid.)
+
+**No example because these are super hard**

@@ -1,0 +1,13 @@
+.titleButton {
+}
+
+.children {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.children[aria-hidden="true"] {
+  height: 0;
+}

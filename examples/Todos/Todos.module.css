@@ -1,0 +1,19 @@
+.todosContainer {
+  display: flex;
+  position: relative;
+  height: 100px;
+}
+
+.todoColumn {
+  width: 200px;
+}
+
+.todoColumn strong {
+  border-bottom: solid 2px black;
+}
+
+.todoItem {
+  width: 180px;
+  border-radius: 8px;
+  background-color: burlywood;
+}
