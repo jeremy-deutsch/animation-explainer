@@ -42,6 +42,8 @@ Structure:
 
 This doc tries to summarize how I think about doing animations in React. It's mostly just what the "fundamental" kinds of animations are from my perspective, and what the best ways are to do those kinds of animations in a React web app.
 
+You can find the code for this doc here: [github.com/jeremy-deutsch/animation-explainer](https://github.com/jeremy-deutsch/animation-explainer)
+
 ## Technical fundamentals: the APIs
 
 There are only really a few reasonable ways to have stuff on a React site move around. You probably know a few or all of them. I'll be referencing the below techniques in this doc:
@@ -194,10 +196,10 @@ Technically, the best way to pull off a shared-element transition in hand-writte
 <Todos />
 
 ```tsx
-function TodoItem(props: {
+function FLIPTodoItem(props: {
   label: string;
   done: boolean;
-  lastRect: { top: number; left: number } | null;
+  lastRect?: { top: number; left: number };
   toggleTodo: (todo: Todo) => void;
 }) {
   const divRef = useRef<HTMLDivElement>(null);
@@ -215,7 +217,7 @@ function TodoItem(props: {
           { transform: `translate(${xOffset}px, ${yOffset}px)` },
           { transform: "translate(0, 0)" },
         ],
-        { duration: 200 }
+        { easing: "linear", duration: 200 }
       );
     }
 
@@ -241,6 +243,30 @@ function TodoItem(props: {
       />
       <label htmlFor={props.label}>{props.label}</label>
     </div>
+  );
+}
+
+function FramerMotionTodoItem(props: {
+  label: string;
+  done: boolean;
+  toggleTodo: (todo: Todo) => void;
+}) {
+  return (
+    <motion.div
+      className={styles.todoItem}
+      transition={{ ease: "linear", duration: 0.2 }}
+      layoutId={props.label}
+    >
+      <input
+        type="checkbox"
+        id={props.label}
+        onClick={() => {
+          props.toggleTodo({ label: props.label, done: !props.done });
+        }}
+        checked={props.done}
+      />
+      <label htmlFor={props.label}>{props.label}</label>
+    </motion.div>
   );
 }
 ```

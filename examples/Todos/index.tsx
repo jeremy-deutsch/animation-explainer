@@ -1,9 +1,10 @@
+import { AnimateSharedLayout, motion } from "framer-motion";
 import { useLayoutEffect, useRef, useState } from "react";
 import styles from "./Todos.module.css";
 
 interface Todo {
   label: string;
-  lastRect: Rect | null;
+  lastRect?: Rect;
   done: boolean;
 }
 
@@ -14,9 +15,9 @@ interface Rect {
 
 export default function Todos() {
   const [allTodos, setAllTodos] = useState<Todo[]>([
-    { label: "Wash the dishes", lastRect: null, done: false },
-    { label: "Take out the trash", lastRect: null, done: false },
-    { label: "Mow the lawn", lastRect: null, done: true },
+    { label: "Wash the dishes", done: false },
+    { label: "Take out the trash", done: false },
+    { label: "Mow the lawn", done: true },
   ]);
 
   const toggleTodo = (todo: Todo) => {
@@ -30,44 +31,56 @@ export default function Todos() {
     });
   };
 
+  const [shouldUseFramerMotion, setShouldUseFramerMotion] = useState(false);
+
+  const renderTodoItem = (todo: Todo) =>
+    shouldUseFramerMotion ? (
+      <FramerMotionTodoItem
+        key={todo.label}
+        {...todo}
+        toggleTodo={toggleTodo}
+      />
+    ) : (
+      <FLIPTodoItem key={todo.label} {...todo} toggleTodo={toggleTodo} />
+    );
+
   return (
-    <div className={styles.todosContainer}>
-      <div className={styles.todoColumn}>
-        <strong>To Do</strong>
-        {allTodos
-          .filter((t) => !t.done)
-          .map((t) => (
-            <TodoItem
-              key={t.label}
-              label={t.label}
-              done={t.done}
-              lastRect={t.lastRect}
-              toggleTodo={toggleTodo}
-            />
-          ))}
+    <div className={styles.container}>
+      <div className={styles.useFramerMotionContainer}>
+        <input
+          type="checkbox"
+          id="use-framer-motion"
+          checked={shouldUseFramerMotion}
+          onChange={(e) => {
+            // erase all the lastRects
+            setAllTodos((prevTodos) =>
+              prevTodos.map(({ label, done }) => ({ label, done }))
+            );
+            setShouldUseFramerMotion(e.target.checked);
+          }}
+        />
+        <label htmlFor="use-framer-motion">Use Framer Motion?</label>
       </div>
-      <div className={styles.todoColumn}>
-        <strong>Done</strong>
-        {allTodos
-          .filter((t) => t.done)
-          .map((t) => (
-            <TodoItem
-              key={t.label}
-              label={t.label}
-              done={t.done}
-              lastRect={t.lastRect}
-              toggleTodo={toggleTodo}
-            />
-          ))}
-      </div>
+      <AnimateSharedLayout>
+        <div className={styles.todosContainer}>
+          <div className={styles.todoColumn}>
+            <strong>To Do</strong>
+            {allTodos.filter((t) => !t.done).map(renderTodoItem)}
+          </div>
+          <div className={styles.todoColumn}>
+            <strong>Done</strong>
+            {allTodos.filter((t) => t.done).map(renderTodoItem)}
+          </div>
+        </div>
+      </AnimateSharedLayout>
     </div>
   );
 }
 
-function TodoItem(props: {
+function FLIPTodoItem(props: {
   label: string;
   done: boolean;
-  lastRect: { top: number; left: number } | null;
+  lastRect?: { top: number; left: number };
   toggleTodo: (todo: Todo) => void;
 }) {
   const divRef = useRef<HTMLDivElement>(null);
@@ -85,7 +98,7 @@ function TodoItem(props: {
           { transform: `translate(${xOffset}px, ${yOffset}px)` },
           { transform: "translate(0, 0)" },
         ],
-        { duration: 200 }
+        { easing: "linear", duration: 200 }
       );
     }
 
@@ -111,5 +124,29 @@ function TodoItem(props: {
       />
       <label htmlFor={props.label}>{props.label}</label>
     </div>
+  );
+}
+
+function FramerMotionTodoItem(props: {
+  label: string;
+  done: boolean;
+  toggleTodo: (todo: Todo) => void;
+}) {
+  return (
+    <motion.div
+      className={styles.todoItem}
+      transition={{ ease: "linear", duration: 0.2 }}
+      layoutId={props.label}
+    >
+      <input
+        type="checkbox"
+        id={props.label}
+        onClick={() => {
+          props.toggleTodo({ label: props.label, done: !props.done });
+        }}
+        checked={props.done}
+      />
+      <label htmlFor={props.label}>{props.label}</label>
+    </motion.div>
   );
 }
